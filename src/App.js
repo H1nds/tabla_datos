@@ -297,40 +297,63 @@ function App() {
         datos.forEach((fila, i) => {
             if (i < 2) return;
 
-            const fechaTexto = fila.fecha;
+            const fechasTexto = fila.fecha;
             const egresoTexto = fila.egreso;
             const actividad = fila.actividad || "Sin actividad";
 
-            if (!fechaTexto || !egresoTexto) return;
+            if (!fechasTexto || !egresoTexto) return;
 
-            let fecha = null;
-            if (fechaTexto.includes("/")) {
-                const [d, m, y] = fechaTexto.split("/");
-                fecha = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-            } else if (fechaTexto.includes("-")) {
-                fecha = new Date(fechaTexto);
-            }
-
-            if (!fecha || fecha.getMonth() !== mesIndex) return;
+            const fechasSeparadas = fechasTexto.split(",").map(f => f.trim());
 
             const egresoNum = parseFloat(
-                egresoTexto.replace(/[^\d.-]/g, "").replace(",", ".")
+                egresoTexto.toString().replace(/[^\d.-]/g, "").replace(",", ".")
             );
             if (isNaN(egresoNum)) return;
 
-            total += egresoNum;
-            detalles.push({
-                dia: fecha.getDate(),
-                monto: egresoNum,
-                actividad: actividad
+            let contieneMes = false;
+            const dias = [];
+
+            fechasSeparadas.forEach((textoFecha) => {
+                let fecha = null;
+                if (textoFecha.includes("/")) {
+                    const [d, m, y] = textoFecha.split("/");
+                    fecha = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+                } else if (textoFecha.includes("-")) {
+                    fecha = new Date(textoFecha);
+                }
+
+                if (fecha && fecha.getMonth() === mesIndex) {
+                    contieneMes = true;
+                    dias.push(fecha.getDate());
+                }
             });
 
-            actividadesPorDia.push({
-                name: `Día ${fecha.getDate()}`,
-                monto: egresoNum
-            });
+            // Este bloque es nuevo y reemplaza el push individual por fecha
+            if (contieneMes) {
+                const diasTexto = dias.length > 1
+                    ? dias.map(d => d).join(" y ")
+                    : dias[0];
 
-            conteoPorActividad[actividad] = (conteoPorActividad[actividad] || 0) + egresoNum;
+                actividadesPorDia.push({
+                    name: `Día ${diasTexto}`,
+                    monto: egresoNum
+                });
+            }
+
+
+            if (contieneMes) {
+                total += egresoNum;
+
+                const diasTexto = dias.length > 1
+                    ? dias.map(d => `Día ${d}`).join(" y ")
+                    : `Día ${dias[0]}`;
+
+                detalles.push({
+                    dia: diasTexto,
+                    monto: egresoNum,
+                    actividad
+                });
+            }
         });
 
         // Obtener el monto del OS desde la fila 1
@@ -474,10 +497,10 @@ function App() {
         const docPDF = new jsPDF();
         docPDF.setFontSize(14);
         docPDF.text(`Resumen de ${mesSeleccionado}`, 14, 20);
-        docPDF.text(`Total gastado: S/ ${resumen.total.toFixed(2)}`, 14, 30);
+        docPDF.text(`Total gastado: $ ${resumen.total.toFixed(2)}`, 14, 30);
 
         const cuerpo = resumen.detalles.map((d) => [
-            d.dia, d.actividad, `S/ ${d.monto.toFixed(2)}`
+            d.dia, d.actividad, `$ ${d.monto.toFixed(2)}`
         ]);
 
         autoTable(docPDF, {
@@ -886,11 +909,14 @@ function App() {
                         value={mesSeleccionado}
                         onChange={(e) => {
                             setMesSeleccionado(e.target.value);
-                            calcularResumenPorMes(e.target.value);
+                            if (e.target.value !== "estado") {
+                                calcularResumenPorMes(e.target.value);
+                            }
                         }}
                         className="px-3 py-2 border rounded-md text-sm text-gray-700 mb-4"
                     >
-                        <option value="">Selecciona un mes</option>
+                        <option value="">Selecciona una opción</option>
+                        <option value="estado">Estado del contrato</option>
                         {[
                             "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
@@ -899,7 +925,60 @@ function App() {
                         ))}
                     </select>
 
-                    {mesSeleccionado && (
+                    {/* Vista: Estado del contrato */}
+                    {mesSeleccionado === "estado" && (
+                        <div className="bg-white p-4 rounded-lg shadow mb-8">
+                            <h2 className="text-lg font-semibold mb-2 text-gray-800">Estado del contrato</h2>
+
+                            <div className="w-full h-80 mb-4">
+                                <ResponsiveContainer>
+                                    <PieChart>
+                                        <Pie
+                                            data={[
+                                                {
+                                                    name: "Gastado",
+                                                    value: obtenerGastoRealHastaHoy()
+                                                },
+                                                {
+                                                    name: "Contrato (OS)",
+                                                    value: parseFloat(
+                                                        datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
+                                                    ) || 0
+                                                }
+                                            ]}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            outerRadius={100}
+                                            label
+                                        >
+                                            <Cell fill="#f97316" />
+                                            <Cell fill="#10b981" />
+                                        </Pie>
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            <p className="text-gray-700 text-base mb-1">
+                                <strong>Total gastado hasta hoy:</strong>{" "}
+                                $ {obtenerGastoRealHastaHoy().toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                            </p>
+
+                            <p className="text-gray-700 text-base font-semibold">
+                                <strong>Saldo restante:</strong>{" "}
+                                ${(
+                                    (parseFloat(
+                                        datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
+                                    ) || 0) - obtenerGastoRealHastaHoy()
+                                ).toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Vista: Resumen mensual clásico */}
+                    {mesSeleccionado && mesSeleccionado !== "estado" && (
                         <>
                             <p className="mb-4 text-gray-700 font-medium">
                                 Total gastado en {mesSeleccionado}:{" "}
@@ -907,12 +986,12 @@ function App() {
                                     $ {resumen.total.toFixed(2)}
                                 </span>
                             </p>
+
                             <ul className="space-y-1 mb-4 text-sm text-gray-600">
                                 {resumen.detalles.map((d, i) => (
-                                    <li key={i}>
-                                        Día {d.dia}: <strong>$ {d.monto.toFixed(2)}</strong> / Actividad:{" "}
-                                        {d.actividad}
-                                    </li>
+                                    <p key={i}>
+                                        <strong>{d.dia}:</strong> $ {d.monto.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - Actividad: {d.actividad}
+                                    </p>
                                 ))}
                             </ul>
 
@@ -931,7 +1010,7 @@ function App() {
                                 </button>
                                 <button
                                     onClick={descargarGraficasPNG}
-                                    className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-500 text-sm"
+                                    className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm"
                                 >
                                     Descargar gráficas como PNG
                                 </button>
@@ -951,84 +1030,6 @@ function App() {
                                             <Bar dataKey="monto" fill="#4f46e5" name="Monto" />
                                         </BarChart>
                                     </ResponsiveContainer>
-                                </div>
-
-                                {/* Gráfica de pastel */}
-                                <div className="bg-white rounded-lg shadow p-4">
-                                    <h2 className="text-lg font-semibold text-gray-800 mb-2">
-                                        Estado del contrato ({new Date().toLocaleDateString("es-PE")})
-                                    </h2>
-
-                                    <p className="text-gray-700 text-base mb-4">
-                                        <strong>Monto OS:</strong>{" "}
-                                        S/{" "}
-                                        {parseFloat(
-                                            datos[1]?.os
-                                                ?.toString()
-                                                .replace(/[^\d.-]/g, "")
-                                                .replace(",", ".")
-                                        ).toLocaleString("es-PE", {
-                                            minimumFractionDigits: 2
-                                        })}
-                                    </p>
-
-                                    {/* GRAFICO PASTEL */}
-                                    <div className="w-full h-80 mb-4">
-                                        <ResponsiveContainer>
-                                            <PieChart>
-                                                <Pie
-                                                    data={[
-                                                        {
-                                                            name: "Gastado",
-                                                            value: obtenerGastoRealHastaHoy()
-                                                        },
-                                                        {
-                                                            name: "Contrato (OS)",
-                                                            value:
-                                                                parseFloat(
-                                                                    datos[1]?.os
-                                                                        ?.toString()
-                                                                        .replace(/[^\d.-]/g, "")
-                                                                        .replace(",", ".")
-                                                                ) || 0
-                                                        }
-                                                    ]}
-                                                    dataKey="value"
-                                                    nameKey="name"
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    outerRadius={100}
-                                                    label
-                                                >
-                                                    <Cell fill="#f97316" />
-                                                    <Cell fill="#10b981" />
-                                                </Pie>
-                                                <Tooltip />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-
-                                    <p className="text-gray-700 text-base mb-1">
-                                        <strong>Total gastado hasta hoy:</strong>{" "}
-                                        S/ {obtenerGastoRealHastaHoy().toLocaleString("es-PE", {
-                                            minimumFractionDigits: 2
-                                        })}
-                                    </p>
-
-                                    <p className="text-gray-700 text-base font-semibold">
-                                        <strong>Saldo restante:</strong>{" "}
-                                        S/{" "}
-                                        {(
-                                            (parseFloat(
-                                                datos[1]?.os
-                                                    ?.toString()
-                                                    .replace(/[^\d.-]/g, "")
-                                                    .replace(",", ".")
-                                            ) || 0) - obtenerGastoRealHastaHoy()
-                                        ).toLocaleString("es-PE", {
-                                            minimumFractionDigits: 2
-                                        })}
-                                    </p>
                                 </div>
                             </div>
                         </>
