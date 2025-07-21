@@ -232,53 +232,156 @@ function App() {
     });
 
     const exportarExcel = async () => {
-        const workbook = new ExcelJS.Workbook();
-        const hoja = workbook.addWorksheet("Tabla completa");
+    const workbook = new ExcelJS.Workbook();
 
-        // Encabezados
-        hoja.columns = campos.map((campo) => ({
-            header: campo,
-            key: campo,
-            width: 20
-        }));
+    // Hoja 1: Tabla general
+    const hojaTabla = workbook.addWorksheet("Tabla General");
 
-        // Estilo del encabezado
-        hoja.getRow(1).font = { bold: true };
+    hojaTabla.columns = campos.map((campo) => ({
+        header: campo,
+        key: campo,
+        width: 20
+    }));
 
-        // Datos
-        datos.forEach((fila) => {
-            hoja.addRow(fila);
+    hojaTabla.getRow(1).font = { bold: true };
+
+    datos.forEach((fila) => {
+        hojaTabla.addRow(fila);
+    });
+
+    hojaTabla.eachRow((row) => {
+        row.eachCell((cell) => {
+            cell.border = {
+                top: { style: "thin" },
+                left: { style: "thin" },
+                bottom: { style: "thin" },
+                right: { style: "thin" }
+            };
+        });
+    });
+
+    // Solo si hay mes específico (no vacío y no "estado"), se crea hoja resumen
+    if (mesSeleccionado && mesSeleccionado !== "estado") {
+        const hojaResumen = workbook.addWorksheet(`Resumen ${mesSeleccionado}`);
+
+        hojaResumen.columns = [
+            { header: "Día", key: "día", width: 10 },
+            { header: "Actividad", key: "actividad", width: 40 },
+            { header: "Monto", key: "monto", width: 15 }
+        ];
+
+        hojaResumen.getRow(1).font = { bold: true };
+
+        resumen.detalles.forEach((d) => {
+            hojaResumen.addRow({
+                dia: d.dia,
+                actividad: d.actividad,
+                monto: d.monto.toFixed(2)
+            });
         });
 
-        // Bordes
-        hoja.eachRow((row) => {
+        const filaTotal = hojaResumen.addRow([
+            "",
+            "TOTAL:",
+            resumen.total.toFixed(2)
+        ]);
+        filaTotal.font = { bold: true };
+        filaTotal.getCell(2).alignment = { horizontal: "right" };
+
+        hojaResumen.eachRow((row) => {
             row.eachCell((cell) => {
                 cell.border = {
                     top: { style: "thin" },
                     left: { style: "thin" },
                     bottom: { style: "thin" },
-                    right: { style: "thin" },
+                    right: { style: "thin" }
                 };
             });
         });
+    }
 
-        // Exportar
-        const buffer = await workbook.xlsx.writeBuffer();
-        saveAs(new Blob([buffer]), `tabla_completa.xlsx`);
-    };
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(
+        new Blob([buffer]),
+        mesSeleccionado
+            ? `datos_completos_${mesSeleccionado}_${anoSeleccionado}.xlsx`
+            : `tabla_general_${anoSeleccionado}.xlsx`
+    );
+};
 
-    const exportarPDF = () => {
-        const docPDF = new jsPDF();
-        const encabezado = campos.map((c) => datos[0]?.[c] || c.toUpperCase());
-        const cuerpo = datos.slice(1).map((fila) => campos.map((campo) => fila[campo]));
+    const exportarPDF = async () => {
+    const docPDF = new jsPDF({ orientation: "landscape" });
 
-        autoTable(docPDF, {
-            head: [encabezado],
-            body: cuerpo
-        });
+    // Encabezado de la tabla general
+    const encabezado = campos.map((c) => datos[0]?.[c] || c.toUpperCase());
+    const cuerpo = datos.slice(1).map((fila) => campos.map((campo) => fila[campo]));
 
-        docPDF.save("tabla_datos.pdf");
-    };
+    // Tabla general
+    autoTable(docPDF, {
+        head: [encabezado],
+        body: cuerpo,
+        margin: { top: 20 }
+    });
+
+    const finalY = docPDF.lastAutoTable.finalY || 30;
+
+    // Si no hay mes seleccionado, solo exporta la tabla
+    if (!mesSeleccionado) {
+        docPDF.save(`tabla_general_${anoSeleccionado}.pdf`);
+        return;
+    }
+
+    // Si es "estado del contrato"
+    if (mesSeleccionado === "estado") {
+        const graficas = document.getElementById("graficas-container");
+        if (graficas) {
+            const canvas = await html2canvas(graficas, { scale: 2 });
+            const imgData = canvas.toDataURL("image/png");
+            docPDF.addImage(imgData, "PNG", 10, finalY + 10, 270, 100);
+        }
+
+        docPDF.save(`estado_contrato_${anoSeleccionado}.pdf`);
+        return;
+    }
+
+    // Si se seleccionó un mes específico, añadir resumen y gráfica
+    docPDF.setFontSize(14);
+    docPDF.text(`Resumen de ${mesSeleccionado}`, 14, finalY + 20);
+    docPDF.text(`Total gastado: $ ${resumen.total.toFixed(2)}`, 14, finalY + 30);
+
+    const cuerpoResumen = resumen.detalles.map((d) => [
+        d.dia,
+        d.actividad,
+        `$ ${d.monto.toFixed(2)}`
+    ]);
+
+    autoTable(docPDF, {
+        head: [["Día", "Actividad", "Monto"]],
+        body: cuerpoResumen,
+        startY: finalY + 40
+    });
+
+    // Gráfica de barras
+    const graficas = document.getElementById("graficas-container");
+    if (graficas) {
+  const canvas = await html2canvas(graficas, { scale: 2 });
+  const imgData = canvas.toDataURL("image/png");
+  const afterResumen = docPDF.lastAutoTable?.finalY || finalY + 60;
+
+  // Asegurar que no pase el alto de la página
+  const pageHeight = docPDF.internal.pageSize.getHeight();
+const espacioNecesario = 100; // altura estimada de la gráfica
+
+if (afterResumen + espacioNecesario > pageHeight) {
+    docPDF.addPage();
+    docPDF.addImage(imgData, "PNG", 10, 20, 250, 80); // comienzo desde arriba
+} else {
+    docPDF.addImage(imgData, "PNG", 10, afterResumen + 10, 250, 80);
+} 
+}
+
+    docPDF.save(`resumen_${mesSeleccionado}_${anoSeleccionado}.pdf`);
+};
 
     const calcularResumenPorMes = (mesNombre) => {
         const meses = {
@@ -397,11 +500,11 @@ function App() {
 
         // Datos de gráfica pastel
         const pastelData = osValido
-            ? [
-                { name: "OS Total", value: osMonto },
-                { name: "Gastado", value: egresosHastaHoy }
+          ? [
+              { name: "Gastado", value: egresosHastaHoy },
+              { name: "Saldo restante", value: Math.max(osMonto - egresosHastaHoy, 0) }
             ]
-            : [];
+          : [];
 
         setResumen({
             total,
@@ -781,7 +884,10 @@ function App() {
                                     key={i}
                                     className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase"
                                 >
-                                    {datos[0]?.[campo] || campo.toUpperCase()}
+                                    {campo === "egreso"
+                                      ? "EGRESO ($)"
+                                      : datos[0]?.[campo] || campo.toUpperCase()}
+
                                 </th>
                             ))}
                             {user && (
@@ -939,54 +1045,56 @@ function App() {
 
                     {/* Vista: Estado del contrato */}
                     {mesSeleccionado === "estado" && (
-                        <div className="bg-white p-4 rounded-lg shadow mb-8">
-                            <h2 className="text-lg font-semibold mb-2 text-gray-800">Estado del contrato</h2>
+                      (() => {
+                        const osValor = parseFloat(
+                          datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
+                        ) || 0;
+
+                        const gastoReal = obtenerGastoRealHastaHoy();
+                        const saldoRestante = Math.max(parseFloat((osValor - gastoReal).toFixed(2)), 0);
+
+                        return (
+                          <div id="graficas-container" className="bg-white p-4 rounded-lg shadow mb-8">
+                            <h2 className="text-lg font-semibold mb-2 text-gray-800">
+                              Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {new Date().toLocaleDateString("es-PE")}
+                            </h2>
 
                             <div className="w-full h-80 mb-4">
-                                <ResponsiveContainer>
-                                    <PieChart>
-                                        <Pie
-                                            data={[
-                                                {
-                                                    name: "Gastado",
-                                                    value: obtenerGastoRealHastaHoy()
-                                                },
-                                                {
-                                                    name: "Contrato (OS)",
-                                                    value: parseFloat(
-                                                        datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
-                                                    ) || 0
-                                                }
-                                            ]}
-                                            dataKey="value"
-                                            nameKey="name"
-                                            cx="50%"
-                                            cy="50%"
-                                            outerRadius={100}
-                                            label
-                                        >
-                                            <Cell fill="#f97316" />
-                                            <Cell fill="#10b981" />
-                                        </Pie>
-                                        <Tooltip />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                              <ResponsiveContainer>
+                                <PieChart>
+                                  <Pie
+                                    data={[
+                                      { name: "Gastado", value: gastoReal },
+                                      { name: "Saldo restante", value: saldoRestante }
+                                    ]}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    outerRadius={100}
+                                    label
+                                  >
+                                    <Cell fill="#f97316" />
+                                    <Cell fill="#10b981" />
+                                  </Pie>
+                                  <Tooltip />
+                                  <Legend />
+                                </PieChart>
+                              </ResponsiveContainer>
                             </div>
 
                             <p className="text-gray-700 text-base mb-1">
-                                <strong>Total gastado hasta hoy:</strong>{" "}
-                                $ {obtenerGastoRealHastaHoy().toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                              <strong>Total gastado hasta hoy:</strong>{" "}
+                              ${gastoReal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                             </p>
 
                             <p className="text-gray-700 text-base font-semibold">
-                                <strong>Saldo restante:</strong>{" "}
-                                ${(
-                                    (parseFloat(
-                                        datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
-                                    ) || 0) - obtenerGastoRealHastaHoy()
-                                ).toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                              <strong>Saldo restante:</strong>{" "}
+                              ${saldoRestante.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                             </p>
-                        </div>
+                          </div>
+                        );
+                      })()
                     )}
 
                     {/* Vista: Resumen mensual clásico */}
@@ -1008,18 +1116,6 @@ function App() {
                             </ul>
 
                             <div className="flex flex-wrap gap-4 mb-6">
-                                <button
-                                    onClick={exportarResumenExcel}
-                                    className="bg-amber-300 text-white px-4 py-2 rounded hover:bg-amber-400 text-sm"
-                                >
-                                    Exportar a Excel
-                                </button>
-                                <button
-                                    onClick={exportarResumenPDF}
-                                    className="bg-amber-400 text-white px-4 py-2 rounded hover:bg-amber-500 text-sm"
-                                >
-                                    Exportar a PDF
-                                </button>
                                 <button
                                     onClick={descargarGraficasPNG}
                                     className="bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 text-sm"
