@@ -414,26 +414,37 @@ function App() {
     };
 
     const obtenerGastoRealHastaHoy = () => {
-        const hoy = new Date();
-        let total = 0;
+    const hoy = new Date();
+    let total = 0;
 
-        for (let i = 2; i < datos.length; i++) {
-            const fila = datos[i];
-            const fechaTexto = fila.fecha;
-            const egresoTexto = fila.egreso;
+    for (let i = 2; i < datos.length; i++) {
+        const fila = datos[i];
+        const fechasTexto = fila.fecha;
+        const egresoTexto = fila.egreso;
 
-            if (!fechaTexto || !egresoTexto) continue;
+        if (!fechasTexto || !egresoTexto) continue;
 
+        const fechasSeparadas = fechasTexto.split(",").map(f => f.trim());
+
+        let incluyeFechaValida = false;
+
+        for (const textoFecha of fechasSeparadas) {
             let fecha = null;
-            if (fechaTexto.includes("/")) {
-                const [d, m, y] = fechaTexto.split("/");
+
+            if (textoFecha.includes("/")) {
+                const [d, m, y] = textoFecha.split("/");
                 fecha = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-            } else if (fechaTexto.includes("-")) {
-                fecha = new Date(fechaTexto);
+            } else if (textoFecha.includes("-")) {
+                fecha = new Date(textoFecha);
             }
 
-            if (!fecha || fecha > hoy) continue;
+            if (fecha && !isNaN(fecha) && fecha <= hoy) {
+                incluyeFechaValida = true;
+                break; // Basta con una fecha válida para sumar el egreso
+            }
+        }
 
+        if (incluyeFechaValida) {
             const egreso = parseFloat(
                 egresoTexto.toString().replace(/[^\d.-]/g, "").replace(",", ".")
             );
@@ -441,9 +452,10 @@ function App() {
                 total += egreso;
             }
         }
+    }
 
-        return total;
-    };
+    return total;
+};
 
     const exportarResumenExcel = async () => {
         const workbook = new ExcelJS.Workbook();
@@ -612,7 +624,7 @@ function App() {
                                     <tr>
                                         <th className="px-3 py-2 border">Actividad</th>
                                         <th className="px-3 py-2 border">Descripción</th>
-                                        <th className="px-3 py-2 border">Egreso</th>
+                                        <th className="px-3 py-2 border">Egreso ($)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
