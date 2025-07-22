@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db } from "./firebase";
 import { doc, updateDoc, onSnapshot, getDoc } from "firebase/firestore";
 import Auth from "./Auth";
@@ -17,6 +17,18 @@ import { FaArrowUp, FaArrowDown } from "react-icons/fa";
 
 function App() {
     const [datos, setDatos] = useState([]);
+    const graficaPastelRef = useRef(null);
+
+    const descargarGraficaPastel = () => {
+        if (graficaPastelRef.current) {
+            html2canvas(graficaPastelRef.current).then((canvas) => {
+                const link = document.createElement("a");
+                link.download = `grafica_pastel_${new Date().toISOString().split("T")[0]}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+    };
     const [user, setUser] = useState(null);
     const [checkingAuth, setCheckingAuth] = useState(true);
     const [modoLector, setModoLector] = useState(false);
@@ -1058,8 +1070,13 @@ if (afterResumen + espacioNecesario > pageHeight) {
                             <h2 className="text-lg font-semibold mb-2 text-gray-800">
                               Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {new Date().toLocaleDateString("es-PE")}
                             </h2>
-
-                            <div className="w-full h-80 mb-4">
+                                <button
+                                    onClick={descargarGraficaPastel}
+                                    className="mb-4 bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded"
+                                >
+                                    Descargar gráfica pastel en PNG
+                                </button>
+                             <div ref={graficaPastelRef} className="w-full h-80 mb-4">
                               <ResponsiveContainer>
                                 <PieChart>
                                   <Pie
