@@ -57,7 +57,7 @@ function App() {
 
     const campos = [
         "actividad", "descripcion", "lugar", "fecha",
-        "os", "egreso", "estatus administrativo", "estatus", "hes", "factura"
+        "os", "egreso", "estatus empresarial", "estatus administrativo", "hes", "factura"
     ];
 
     useEffect(() => {
@@ -162,7 +162,7 @@ function App() {
     const agregarFila = () => {
         const nuevaFila = {
             actividad: "", descripcion: "", lugar: "", fecha: "",
-            os: "", egreso: "", estatusadministrativo: "", estatus: "", hes: "", factura: ""
+            os: "", egreso: "", estatusadministrativo: "", estatusempresarial: "", hes: "", factura: ""
         };
         const nuevosDatos = [...datos, nuevaFila];
         setDatos(nuevosDatos);
@@ -926,7 +926,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
 
                                         return (
                                             <td key={i} className="px-4 py-2 text-sm text-gray-700">
-                                                {campo === "estatus administrativo" && user ? (
+                                                {campo === "estatus empresarial" && user ? (
                                                     realIndex > 1 ? (
                                                         <select
                                                             value={fila[campo]}
