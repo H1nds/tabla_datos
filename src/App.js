@@ -57,7 +57,7 @@ function App() {
 
     const campos = [
         "actividad", "descripcion", "lugar", "fecha",
-        "os", "egreso", "estatus", "hes", "factura"
+        "os", "egreso", "estatus administrativo", "estatus", "hes", "factura"
     ];
 
     useEffect(() => {
@@ -162,7 +162,7 @@ function App() {
     const agregarFila = () => {
         const nuevaFila = {
             actividad: "", descripcion: "", lugar: "", fecha: "",
-            os: "", egreso: "", estatus: "", hes: "", factura: ""
+            os: "", egreso: "", estatusadministrativo: "", estatus: "", hes: "", factura: ""
         };
         const nuevosDatos = [...datos, nuevaFila];
         setDatos(nuevosDatos);
@@ -926,7 +926,22 @@ if (afterResumen + espacioNecesario > pageHeight) {
 
                                         return (
                                             <td key={i} className="px-4 py-2 text-sm text-gray-700">
-                                                {esEditable ? (
+                                                {campo === "estatus administrativo" && user ? (
+                                                    realIndex > 1 ? (
+                                                        <select
+                                                            value={fila[campo]}
+                                                            onChange={(e) => handleChange(realIndex, campo, e.target.value)}
+                                                            className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                                        >
+                                                            <option value="">Seleccione</option>
+                                                            <option value="Aprobado">Aprobado</option>
+                                                            <option value="Supervisado">Supervisado</option>
+                                                            <option value="Ejecutado">Ejecutado</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span></span> // vacío para las filas 0 y 1
+                                                    )
+                                                ) : esEditable ? (
                                                     <input
                                                         value={fila[campo]}
                                                         onChange={(e) =>
@@ -935,11 +950,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                                         className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                                                     />
                                                 ) : (
-                                                    <span
-                                                        className={
-                                                            realIndex === 1 ? "font-semibold text-gray-800" : ""
-                                                        }
-                                                    >
+                                                    <span className={realIndex === 1 ? "font-semibold text-gray-800" : ""}>
                                                         {fila[campo]}
                                                     </span>
                                                 )}
