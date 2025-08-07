@@ -13,7 +13,8 @@ import { getDocs, collection } from "firebase/firestore";
 import { setDoc } from "firebase/firestore";
 import logoEditor from './assets/logo1.png';
 import logoLector from './assets/logo2.png';
-import { FaArrowUp, FaArrowDown } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaTrash, FaEye } from "react-icons/fa";
+import { FaBroom } from "react-icons/fa6";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 function App() {
@@ -1151,15 +1152,17 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                             </div>
                                             <button
                                                 onClick={() => limpiarFila(realIndex)}
-                                                className="bg-amber-400 hover:bg-amber-500 text-white px-3 py-1 rounded-md text-sm"
+                                                className="text-amber-500 hover:text-amber-600 text-xl"
+                                                title="Limpiar fila"
                                             >
-                                                Limpiar
+                                                <FaBroom />
                                             </button>
                                             <button
                                                 onClick={() => eliminarFila(realIndex)}
-                                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm"
+                                                className="text-red-600 hover:text-red-700 text-xl"
+                                                title="Eliminar fila"
                                             >
-                                                Eliminar
+                                                <FaTrash />
                                             </button>
                                         </td>
                                     )}
