@@ -14,10 +14,13 @@ import { setDoc } from "firebase/firestore";
 import logoEditor from './assets/logo1.png';
 import logoLector from './assets/logo2.png';
 import { FaArrowUp, FaArrowDown } from "react-icons/fa";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 function App() {
     const [datos, setDatos] = useState([]);
     const graficaPastelRef = useRef(null);
+    const [mostrarModalRecursos, setMostrarModalRecursos] = useState(false);
+    const [filaSeleccionada, setFilaSeleccionada] = useState(null);
 
     const descargarGraficaPastel = () => {
         if (graficaPastelRef.current) {
@@ -52,6 +55,16 @@ function App() {
     const [datosA, setDatosA] = useState([]);
     const [datosB, setDatosB] = useState([]);
     const [osPorAno, setOsPorAno] = useState({});
+    // NUEVO: límites y tipos permitidos
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_MIME = [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel"
+    ];
+    const ALLOWED_EXT = [".pdf", ".png", ".jpg", ".jpeg", ".xls", ".xlsx"];
 
     const docRef = doc(db, "tablas", anoSeleccionado);
 
@@ -162,7 +175,8 @@ function App() {
     const agregarFila = () => {
         const nuevaFila = {
             actividad: "", descripcion: "", lugar: "", fecha: "",
-            os: "", egreso: "", estatusadministrativo: "", estatusempresarial: "", hes: "", factura: ""
+            os: "", egreso: "", estatusadministrativo: "", estatusempresarial: "", hes: "", factura: "",
+            archivos: []
         };
         const nuevosDatos = [...datos, nuevaFila];
         setDatos(nuevosDatos);
@@ -171,20 +185,38 @@ function App() {
 
     const limpiarFila = (index) => {
         const nuevosDatos = [...datos];
+        const archivosPrevios = nuevosDatos[index].archivos; // NUEVO: conservar
         Object.keys(nuevosDatos[index]).forEach((campo) => {
-            nuevosDatos[index][campo] = "";
+            if (campo !== "archivos") { // NUEVO
+                nuevosDatos[index][campo] = "";
+            }
         });
+        nuevosDatos[index].archivos = archivosPrevios || []; // NUEVO
         setDatos(nuevosDatos);
         guardarDatos(nuevosDatos);
     };
 
-    const eliminarFila = (index) => {
-        if (window.confirm("¿Estás seguro de que deseas eliminar esta fila?")) {
-            const nuevosDatos = [...datos];
-            nuevosDatos.splice(index, 1);
-            setDatos(nuevosDatos);
-            guardarDatos(nuevosDatos);
+    const eliminarFila = async (index) => {
+        const confirmar = window.confirm("¿Estás seguro de que deseas eliminar esta fila?");
+        if (!confirmar) return;
+
+        // NUEVO: borrar adjuntos de Storage si los hubiera
+        try {
+            const adjuntos = datos[index]?.archivos || [];
+            if (adjuntos.length > 0) {
+                const storage = getStorage();
+                await Promise.all(
+                    adjuntos.map(a => deleteObject(storageRef(storage, a.path)).catch(() => null))
+                );
+            }
+        } catch (e) {
+            console.warn("Algunos archivos no pudieron eliminarse del storage.", e);
         }
+
+        const nuevosDatos = [...datos];
+        nuevosDatos.splice(index, 1);
+        setDatos(nuevosDatos);
+        await guardarDatos(nuevosDatos);
     };
 
     const moverFilaArriba = (index) => {
@@ -234,6 +266,98 @@ function App() {
         });
 
         setComparacion(resultado);
+    };
+
+    // NUEVO: sanitizar nombres de archivo
+    const sanitizeFileName = (name) => name.toLowerCase().replace(/[^a-z0-9.\-_]/g, "_");
+
+    // NUEVO: abrir/cerrar modal
+    const abrirModalRecursos = (index) => {
+        setFilaSeleccionada(index);
+        setMostrarModalRecursos(true);
+    };
+    const cerrarModalRecursos = () => {
+        setMostrarModalRecursos(false);
+        setFilaSeleccionada(null);
+    };
+
+    // NUEVO: subir un archivo a Storage y actualizar Firestore (registros)
+    const subirArchivo = async (realIndex, file) => {
+        try {
+            if (!user) return; // solo editor
+            if (realIndex <= 1) return; // no aplica a encabezados/OS
+            if (!file) return;
+
+            // Validaciones
+            const ext = "." + file.name.split(".").pop().toLowerCase();
+            if (!ALLOWED_EXT.includes(ext) || !ALLOWED_MIME.includes(file.type)) {
+                alert("Tipo de archivo no permitido. Solo PDF, PNG, JPG, XLS o XLSX.");
+                return;
+            }
+            if (file.size > MAX_FILE_SIZE) {
+                alert("El archivo excede los 5 MB.");
+                return;
+            }
+
+            // Límite por actividad
+            const adjuntosActuales = datos[realIndex]?.archivos || [];
+            if (adjuntosActuales.length >= 5) {
+                alert("Has alcanzado el máximo de 5 archivos para esta actividad.");
+                return;
+            }
+
+            // Subida a Storage
+            const storage = getStorage();
+            const safeName = sanitizeFileName(file.name);
+            const path = `attachments/${anoSeleccionado}/${realIndex}/${Date.now()}_${safeName}`;
+            const ref = storageRef(storage, path);
+
+            await uploadBytes(ref, file, { contentType: file.type });
+            const url = await getDownloadURL(ref);
+
+            // Metadatos a guardar en la fila
+            const meta = {
+                nombre: file.name,
+                tipo: file.type,
+                url,
+                peso: file.size,
+                fecha: new Date().toISOString(),
+                path
+            };
+
+            // Actualizar estado y Firestore
+            const nuevosDatos = [...datos];
+            if (!nuevosDatos[realIndex].archivos) nuevosDatos[realIndex].archivos = [];
+            nuevosDatos[realIndex].archivos = [...nuevosDatos[realIndex].archivos, meta];
+
+            setDatos(nuevosDatos);
+            await guardarDatos(nuevosDatos);
+        } catch (e) {
+            console.error(e);
+            alert("Ocurrió un error al subir el archivo.");
+        }
+    };
+
+    // NUEVO: eliminar un archivo (Storage + Firestore)
+    const eliminarArchivoRecurso = async (realIndex, path) => {
+        try {
+            if (!user) return; // solo editor
+            const confirmar = window.confirm("¿Eliminar este archivo definitivamente?");
+            if (!confirmar) return;
+
+            const storage = getStorage();
+            await deleteObject(storageRef(storage, path));
+
+            const nuevosDatos = [...datos];
+            const arr = nuevosDatos[realIndex]?.archivos || [];
+            nuevosDatos[realIndex].archivos = arr.filter(a => a.path !== path);
+
+            setDatos(nuevosDatos);
+            await guardarDatos(nuevosDatos);
+        } catch (e) {
+            console.error(e);
+            alert("No se pudo eliminar el archivo.");
+        }
     };
 
     const datosFiltrados = datos.filter((fila, index) => {
@@ -897,11 +1021,14 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                     className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase"
                                 >
                                     {campo === "egreso"
-                                      ? "EGRESO ($)"
-                                      : datos[0]?.[campo] || campo.toUpperCase()}
-
+                                        ? "EGRESO ($)"
+                                        : datos[0]?.[campo] || campo.toUpperCase()}
                                 </th>
                             ))}
+                            {/* NUEVO: columna Recursos justo después de Factura */}
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">
+                                Recursos
+                            </th>
                             {user && (
                                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase">
                                     Acciones
@@ -939,7 +1066,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                                             <option value="Ejecutado">Ejecutado</option>
                                                         </select>
                                                     ) : (
-                                                        <span></span> // vacío para las filas 0 y 1
+                                                        <span></span>
                                                     )
                                                 ) : esEditable ? (
                                                     <input
@@ -957,6 +1084,53 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                             </td>
                                         );
                                     })}
+
+                                    {/* NUEVO: Celda Recursos (después de Factura) */}
+                                    <td className="px-4 py-2 text-sm text-gray-700">
+                                        {realIndex > 1 ? (
+                                            <div className="flex items-center gap-2">
+                                                {!modoLector && user ? (
+                                                    <>
+                                                        <span className="text-gray-600">
+                                                            ({(fila.archivos?.length || 0)})
+                                                        </span>
+                                                        <label className="bg-amber-400 hover:bg-amber-500 text-white px-3 py-1 rounded-md text-sm cursor-pointer">
+                                                            Subir
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                accept={ALLOWED_EXT.join(",")}
+                                                                onChange={(e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) subirArchivo(realIndex, file);
+                                                                    e.target.value = "";
+                                                                }}
+                                                            />
+                                                        </label>
+                                                        <button
+                                                            onClick={() => abrirModalRecursos(realIndex)}
+                                                            className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-3 py-1 rounded-md text-sm"
+                                                        >
+                                                            Ver
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => abrirModalRecursos(realIndex)}
+                                                        className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 px-3 py-1 rounded-md text-sm disabled:opacity-50"
+                                                        disabled={!fila.archivos || fila.archivos.length === 0}
+                                                        title={!fila.archivos || fila.archivos.length === 0 ? "Sin recursos" : ""}
+                                                    >
+                                                        Ver ({fila.archivos?.length || 0})
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span></span>
+                                        )}
+                                    </td>
+
+                                    {/* Acciones (tu bloque existente, sin cambios de lógica) */}
                                     {user && realIndex > 1 && (
                                         <td className="px-4 py-2 flex items-center gap-2">
                                             <div className="flex flex-col gap-1 mr-2">
@@ -1170,6 +1344,64 @@ if (afterResumen + espacioNecesario > pageHeight) {
                             </div>
                         </>
                     )}
+                </div>
+            )}
+            {/* NUEVO: Modal de Recursos */}
+            {mostrarModalRecursos && filaSeleccionada !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white w-full max-w-lg rounded-lg shadow-lg p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-lg font-semibold text-gray-800">
+                                Recursos de la actividad
+                            </h3>
+                            <button
+                                onClick={cerrarModalRecursos}
+                                className="text-gray-600 hover:text-gray-800"
+                                aria-label="Cerrar"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {(() => {
+                            const archivos = datos[filaSeleccionada]?.archivos || [];
+                            if (archivos.length === 0) {
+                                return <p className="text-sm text-gray-600">No hay recursos adjuntos.</p>;
+                            }
+                            return (
+                                <ul className="divide-y divide-gray-200">
+                                    {archivos.map((a, idx) => (
+                                        <li key={idx} className="py-3 flex items-center justify-between">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-gray-800 truncate">{a.nombre}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    {a.tipo} • {(a.peso / 1024).toFixed(1)} KB • {new Date(a.fecha).toLocaleString("es-PE")}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <a
+                                                    href={a.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm"
+                                                >
+                                                    Descargar
+                                                </a>
+                                                {user && (
+                                                    <button
+                                                        onClick={() => eliminarArchivoRecurso(filaSeleccionada, a.path)}
+                                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm"
+                                                    >
+                                                        Eliminar
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            );
+                        })()}
+                    </div>
                 </div>
             )}
         </div>
