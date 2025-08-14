@@ -71,7 +71,7 @@ function App() {
 
     const campos = [
         "actividad", "descripcion", "lugar", "fecha",
-        "os", "egreso", "estatus empresarial", "estatus administrativo", "hes", "factura"
+        "os", "egreso", "estatus operativo", "estatus administrativo", "hes", "factura"
     ];
 
     useEffect(() => {
@@ -695,7 +695,27 @@ if (afterResumen + espacioNecesario > pageHeight) {
     }
 
     return total;
-};
+    };
+
+    const obtenerTotalPagado = () => {
+        let total = 0;
+        for (let i = 2; i < datos.length; i++) {
+            const fila = datos[i];
+            const estado = fila["estatus administrativo"];
+            const egresoTexto = fila.egreso;
+
+            if (estado === "Pagado" && egresoTexto) {
+                const egreso = parseFloat(
+                    egresoTexto.toString().replace(/[^\d.-]/g, "").replace(",", ".")
+                );
+                if (!isNaN(egreso)) {
+                    total += egreso;
+                }
+            }
+        }
+        return total;
+    };
+
 
     const exportarResumenExcel = async () => {
         const workbook = new ExcelJS.Workbook();
@@ -1054,7 +1074,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
 
                                         return (
                                             <td key={i} className="px-4 py-2 text-sm text-gray-700">
-                                                {campo === "estatus empresarial" && user ? (
+                                                {campo === "estatus operativo" && user ? (
                                                     realIndex > 1 ? (
                                                         <select
                                                             value={fila[campo]}
@@ -1245,61 +1265,94 @@ if (afterResumen + espacioNecesario > pageHeight) {
 
                     {/* Vista: Estado del contrato */}
                     {mesSeleccionado === "estado" && (
-                      (() => {
-                        const osValor = parseFloat(
-                          datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
-                        ) || 0;
+                        (() => {
+                            const osValor = parseFloat(
+                                datos[1]?.os?.toString().replace(/[^\d.-]/g, "").replace(",", ".")
+                            ) || 0;
 
-                        const gastoReal = obtenerGastoRealHastaHoy();
-                        const saldoRestante = Math.max(parseFloat((osValor - gastoReal).toFixed(2)), 0);
+                            const gastoReal = obtenerGastoRealHastaHoy();
+                            const saldoRestante = Math.max(parseFloat((osValor - gastoReal).toFixed(2)), 0);
+                            const totalPagado = obtenerTotalPagado();
+                            const porPagar = Math.max(gastoReal - totalPagado, 0);
 
-                        return (
-                          <div id="graficas-container" className="bg-white p-4 rounded-lg shadow mb-8">
-                            <h2 className="text-lg font-semibold mb-2 text-gray-800">
-                              Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {new Date().toLocaleDateString("es-PE")}
-                            </h2>
-                                <button
-                                    onClick={descargarGraficaPastel}
-                                    className="mb-4 bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded"
-                                >
-                                    Descargar gráfica pastel en PNG
-                                </button>
-                             <div ref={graficaPastelRef} className="w-full h-80 mb-4">
-                              <ResponsiveContainer>
-                                <PieChart>
-                                  <Pie
-                                    data={[
-                                      { name: "Gastado", value: gastoReal },
-                                      { name: "Saldo restante", value: saldoRestante }
-                                    ]}
-                                    dataKey="value"
-                                    nameKey="name"
-                                    cx="50%"
-                                    cy="50%"
-                                    outerRadius={100}
-                                    label
-                                  >
-                                    <Cell fill="#f97316" />
-                                    <Cell fill="#10b981" />
-                                  </Pie>
-                                  <Tooltip />
-                                  <Legend />
-                                </PieChart>
-                              </ResponsiveContainer>
-                            </div>
+                            return (
+                                <div id="graficas-container" className="bg-white p-4 rounded-lg shadow mb-8">
+                                    <h2 className="text-lg font-semibold mb-2 text-gray-800">
+                                        Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {new Date().toLocaleDateString("es-PE")}
+                                    </h2>
 
-                            <p className="text-gray-700 text-base mb-1">
-                              <strong>Total gastado hasta hoy:</strong>{" "}
-                              ${gastoReal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                            </p>
+                                    <button
+                                        onClick={descargarGraficaPastel}
+                                        className="mb-4 bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded"
+                                    >
+                                        Descargar gráficas en PNG
+                                    </button>
 
-                            <p className="text-gray-700 text-base font-semibold">
-                              <strong>Saldo restante:</strong>{" "}
-                              ${saldoRestante.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                        );
-                      })()
+                                    <div ref={graficaPastelRef} className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full h-80 mb-4">
+                                        {/* Gráfica 1: Gastado vs Saldo restante */}
+                                        <ResponsiveContainer>
+                                            <PieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: "Gastado", value: gastoReal },
+                                                        { name: "Saldo restante", value: saldoRestante }
+                                                    ]}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    outerRadius={100}
+                                                    label
+                                                >
+                                                    <Cell fill="#f97316" />
+                                                    <Cell fill="#10b981" />
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+
+                                        {/* Gráfica 2: Pagado vs Por pagar */}
+                                        <ResponsiveContainer>
+                                            <PieChart>
+                                                <Pie
+                                                    data={[
+                                                        { name: "Pagado", value: totalPagado },
+                                                        { name: "Por pagar", value: porPagar }
+                                                    ]}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    outerRadius={100}
+                                                    label
+                                                >
+                                                    <Cell fill="#3b82f6" />
+                                                    <Cell fill="#f59e0b" />
+                                                </Pie>
+                                                <Tooltip />
+                                                <Legend />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
+                                    <p className="text-gray-700 text-base mb-1">
+                                        <strong>Total gastado hasta hoy:</strong>{" "}
+                                        ${gastoReal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                    </p>
+
+                                    <p className="text-gray-700 text-base mb-1">
+                                        <strong>Total pagado:</strong>{" "}
+                                        ${totalPagado.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                    </p>
+
+                                    <p className="text-gray-700 text-base font-semibold">
+                                        <strong>Saldo restante:</strong>{" "}
+                                        ${saldoRestante.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                            );
+                        })()
                     )}
 
                     {/* Vista: Resumen mensual clásico */}
