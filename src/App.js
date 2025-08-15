@@ -1336,20 +1336,33 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                         </ResponsiveContainer>
                                     </div>
 
-                                    <p className="text-gray-700 text-base mb-1">
-                                        <strong>Total gastado hasta hoy:</strong>{" "}
-                                        ${gastoReal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                                        {/* Indicadores de ejecución presupuestaria */}
+                                        <div className="bg-gray-50 p-4 rounded-lg shadow">
+                                            <h4 className="text-sm font-semibold text-gray-700 mb-2">KPI: EJECUCIÓN PRESUPUESTARIA</h4>
+                                            <p className="text-sm text-gray-800">
+                                                <strong>Total gastado hasta hoy:</strong>{" "}
+                                                ${gastoReal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                            </p>
+                                            <p className="text-sm text-gray-800">
+                                                <strong>Saldo restante:</strong>{" "}
+                                                ${saldoRestante.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                            </p>
+                                        </div>
 
-                                    <p className="text-gray-700 text-base mb-1">
-                                        <strong>Total pagado:</strong>{" "}
-                                        ${totalPagado.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                                    </p>
-
-                                    <p className="text-gray-700 text-base font-semibold">
-                                        <strong>Saldo restante:</strong>{" "}
-                                        ${saldoRestante.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                                    </p>
+                                        {/* Indicadores de eventos por pagar */}
+                                        <div className="bg-gray-50 p-4 rounded-lg shadow">
+                                            <h4 className="text-sm font-semibold text-gray-700 mb-2">KPI: EVENTOS POR PAGAR</h4>
+                                            <p className="text-sm text-gray-800">
+                                                <strong>Eventos ejecutados pagados:</strong>{" "}
+                                                ${totalPagado.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                            </p>
+                                            <p className="text-sm text-gray-800">
+                                                <strong>Eventos ejecutados por pagar:</strong>{" "}
+                                                ${porPagar.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             );
                         })()
