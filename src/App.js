@@ -75,6 +75,8 @@ function App() {
     ];
 
     useEffect(() => {
+        if (!user && !modoLector) return;
+
         const docRef = doc(db, "tablas", anoSeleccionado);
         const unsuscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
@@ -84,7 +86,7 @@ function App() {
             }
         });
         return () => unsuscribe();
-    }, [anoSeleccionado]);
+    }, [anoSeleccionado, user, modoLector]);
 
     useEffect(() => {
         if (modoLector && mesSeleccionado) {
@@ -1077,7 +1079,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                                 {campo === "estatus operativo" && user ? (
                                                     realIndex > 1 ? (
                                                         <select
-                                                            value={fila[campo]}
+                                                            value={fila[campo] ?? ""}
                                                             onChange={(e) => handleChange(realIndex, campo, e.target.value)}
                                                             className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                                                         >
