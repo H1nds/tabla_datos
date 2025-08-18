@@ -95,13 +95,20 @@ function App() {
     }, [datos]); // se actualiza cuando cambian los datos (al cambiar de año)
 
     useEffect(() => {
+        if (!user && !modoLector) return;
+
         const cargarAnos = async () => {
-            const coleccion = await getDocs(collection(db, "tablas"));
-            const anos = coleccion.docs.map(doc => doc.id);
-            setAnosDisponibles(anos);
+            try {
+                const coleccion = await getDocs(collection(db, "tablas"));
+                const anos = coleccion.docs.map(doc => doc.id);
+                setAnosDisponibles(anos);
+            } catch (e) {
+                console.error("Error al cargar años disponibles:", e);
+            }
         };
+
         cargarAnos();
-    }, []);
+    }, [user, modoLector]);
 
     useEffect(() => {
         const auth = getAuth();
