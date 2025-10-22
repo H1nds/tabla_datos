@@ -13,7 +13,7 @@ import { getDocs, collection } from "firebase/firestore";
 import { setDoc } from "firebase/firestore";
 import logoEditor from './assets/logo1.png';
 import logoLector from './assets/logo2.png';
-import { FaArrowUp, FaArrowDown, FaTrash, FaEye } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaTrash } from "react-icons/fa";
 import { FaBroom } from "react-icons/fa6";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -46,12 +46,10 @@ function App() {
         osTotal: null,
         restante: null
     });
-    const [anoSeleccionado, setAnoSeleccionado] = useState("2024");
+    const [anoSeleccionado, setAnoSeleccionado] = useState("");
     const [anosDisponibles, setAnosDisponibles] = useState([]);
-    const [modoComparacion, setModoComparacion] = useState(false);
     const [anoA, setAnoA] = useState("2024");
     const [anoB, setAnoB] = useState("2025");
-    const [comparacion, setComparacion] = useState([]);
     const [verComparativa, setVerComparativa] = useState(false);
     const [datosA, setDatosA] = useState([]);
     const [datosB, setDatosB] = useState([]);
@@ -67,7 +65,7 @@ function App() {
     ];
     const ALLOWED_EXT = [".pdf", ".png", ".jpg", ".jpeg", ".xls", ".xlsx"];
 
-    const docRef = doc(db, "tablas", anoSeleccionado);
+    const docRef = anoSeleccionado ? doc(db, "tablas", anoSeleccionado) : null;
 
     const campos = [
         "actividad", "descripcion", "lugar", "fecha",
@@ -76,9 +74,10 @@ function App() {
 
     useEffect(() => {
         if (!user && !modoLector) return;
+        if (!anoSeleccionado) return; // <-- evita crear referencias inválidas
 
-        const docRef = doc(db, "tablas", anoSeleccionado);
-        const unsuscribe = onSnapshot(docRef, (docSnap) => {
+        const docRefLocal = doc(db, "tablas", anoSeleccionado);
+        const unsuscribe = onSnapshot(docRefLocal, (docSnap) => {
             if (docSnap.exists()) {
                 setDatos(docSnap.data().registros || []);
             } else {
@@ -88,27 +87,43 @@ function App() {
         return () => unsuscribe();
     }, [anoSeleccionado, user, modoLector]);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        if (modoLector && mesSeleccionado) {
-            calcularResumenPorMes(mesSeleccionado);
-        }
-    }, [datos]); // se actualiza cuando cambian los datos (al cambiar de año)
+        if (modoLector && mesSeleccionado) calcularResumenPorMes(mesSeleccionado);
+    }, [datos]);
 
     useEffect(() => {
-        if (!user && !modoLector) return;
+    if (!user && !modoLector) return;
 
-        const cargarAnos = async () => {
-            try {
-                const coleccion = await getDocs(collection(db, "tablas"));
-                const anos = coleccion.docs.map(doc => doc.id);
-                setAnosDisponibles(anos);
-            } catch (e) {
-                console.error("Error al cargar años disponibles:", e);
+    const cargarAnos = async () => {
+        try {
+            const coleccion = await getDocs(collection(db, "tablas"));
+            const anos = coleccion.docs.map(doc => doc.id).sort(); // orden alfabético/numerico ascendente
+            setAnosDisponibles(anos);
+
+            // Selección por defecto:
+            // - Si existe el año actual en Firestore, seleccionarlo
+            // - Sino, seleccionar el mayor año disponible (último de la lista ordenada)
+            const yearNow = new Date().getFullYear();
+            const yearNowStr = String(yearNow);
+
+            if (anos.includes(yearNowStr)) {
+                setAnoSeleccionado(yearNowStr);
+            } else if (anos.length > 0) {
+                // elegir el mayor año disponible
+                const mayor = anos[anos.length - 1];
+                setAnoSeleccionado(mayor);
+            } else {
+                // sin años, opcional: dejar vacío o fallback a current year
+                setAnoSeleccionado(yearNowStr);
             }
-        };
+        } catch (e) {
+            console.error("Error al cargar años disponibles:", e);
+        }
+    };
 
-        cargarAnos();
-    }, [user, modoLector]);
+    cargarAnos();
+}, [user, modoLector]);
 
     useEffect(() => {
         const auth = getAuth();
@@ -145,9 +160,8 @@ function App() {
     }, []);
 
     const guardarDatos = async (nuevosDatos) => {
-        if (user) {
-            await updateDoc(docRef, { registros: nuevosDatos });
-        }
+        if (!user || !docRef) return;
+        await updateDoc(docRef, { registros: nuevosDatos });
     };
 
     const cargarComparacionLadoALado = async () => {
@@ -254,28 +268,6 @@ function App() {
         signOut(auth);
         setUser(null);
         setModoLector(false);
-    };
-
-    const ncargarComparacion = async () => {
-        const [docA, docB] = await Promise.all([
-            getDoc(doc(db, "tablas", anoA)),
-            getDoc(doc(db, "tablas", anoB))
-        ]);
-
-        const datosA = docA.exists() ? docA.data().registros : [];
-        const datosB = docB.exists() ? docB.data().registros : [];
-
-        const resultado = datosA.map((filaA, i) => {
-            const filaB = datosB[i] || {};
-            return {
-                actividad: filaA.actividad || filaB.actividad || "",
-                descripcion: filaA.descripcion || filaB.descripcion || "",
-                egresoA: filaA.egreso || "0",
-                egresoB: filaB.egreso || "0"
-            };
-        });
-
-        setComparacion(resultado);
     };
 
     // NUEVO: sanitizar nombres de archivo
@@ -541,7 +533,6 @@ if (afterResumen + espacioNecesario > pageHeight) {
         let total = 0;
         const detalles = [];
         const actividadesPorDia = [];
-        const conteoPorActividad = {};
 
         datos.forEach((fila, i) => {
             if (i < 2) return;
@@ -1284,10 +1275,23 @@ if (afterResumen + espacioNecesario > pageHeight) {
                             const totalPagado = obtenerTotalPagado();
                             const porPagar = Math.max(gastoReal - totalPagado, 0);
 
+                            // calcular cómo mostrar la fecha en el título del Estado del contrato
+                            const anioActual = new Date().getFullYear();
+                            let displayFecha;
+                            const anoSelNum = parseInt(anoSeleccionado, 10);
+
+                            // si anoSeleccionado es un año válido y es anterior al año actual -> mostrar solo el año seleccionado
+                            if (!isNaN(anoSelNum) && anoSelNum < anioActual) {
+                                displayFecha = String(anoSelNum);
+                            } else {
+                                // si es el año actual o un año futuro -> mostrar fecha completa hoy
+                                displayFecha = new Date().toLocaleDateString("es-PE");
+                            }
+
                             return (
                                 <div id="graficas-container" className="bg-white p-4 rounded-lg shadow mb-8">
                                     <h2 className="text-lg font-semibold mb-2 text-gray-800">
-                                        Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {new Date().toLocaleDateString("es-PE")}
+                                        Estado del contrato: ${osValor.toLocaleString("es-PE", { minimumFractionDigits: 2 })} - {displayFecha}
                                     </h2>
 
                                     <button
