@@ -376,10 +376,10 @@ function App() {
     const hojaTabla = workbook.addWorksheet("Tabla General");
 
     hojaTabla.columns = campos.map((campo) => ({
-        header: campo,
-        key: campo,
-        width: 20
-    }));
+    header: campo === "lugar" ? "INSTITUCIÓN" : campo.toUpperCase(),
+    key: campo,    
+    width: 20
+}));
 
     hojaTabla.getRow(1).font = { bold: true };
 
@@ -451,7 +451,10 @@ function App() {
     const docPDF = new jsPDF({ orientation: "landscape" });
 
     // Encabezado de la tabla general
-    const encabezado = campos.map((c) => datos[0]?.[c] || c.toUpperCase());
+    const encabezado = campos.map((c) => {
+    if (c === "lugar") return "INSTITUCIÓN";
+    return datos[0]?.[c] || c.toUpperCase();
+});
     const cuerpo = datos.slice(1).map((fila) => campos.map((campo) => fila[campo]));
 
     // Tabla general
@@ -1041,9 +1044,9 @@ if (afterResumen + espacioNecesario > pageHeight) {
                                     key={i}
                                     className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase"
                                 >
-                                    {campo === "egreso"
-                                        ? "EGRESO ($)"
-                                        : datos[0]?.[campo] || campo.toUpperCase()}
+                                    {campo === "egreso" ? "EGRESO ($)" :
+                                        campo === "lugar" ? "INSTITUCIÓN" :  
+                                            datos[0]?.[campo] || campo.toUpperCase()}
                                 </th>
                             ))}
                             {/* NUEVO: columna Recursos justo después de Factura */}
