@@ -13,7 +13,7 @@ import { getDocs, collection } from "firebase/firestore";
 import { setDoc } from "firebase/firestore";
 import logoEditor from './assets/logo1.png';
 import logoLector from './assets/logo2.png';
-import { FaArrowUp, FaArrowDown, FaTrash } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaTrash, FaEye, FaEyeSlash } from "react-icons/fa";
 import { FaBroom } from "react-icons/fa6";
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -22,6 +22,8 @@ function App() {
     const graficaPastelRef = useRef(null);
     const [mostrarModalRecursos, setMostrarModalRecursos] = useState(false);
     const [filaSeleccionada, setFilaSeleccionada] = useState(null);
+    const [esInvitado, setEsInvitado] = useState(false);
+    const CORREO_INVITADO = "visitante@fbgroup.com"; 
 
     const descargarGraficaPastel = () => {
         if (graficaPastelRef.current) {
@@ -71,6 +73,12 @@ function App() {
         "actividad", "descripcion", "lugar", "fecha",
         "os", "egreso", "estatus operativo", "estatus administrativo", "hes", "factura"
     ];
+
+    const columnasOcultas = ["os", "egreso", "estatus operativo", "estatus administrativo", "hes", "factura"];
+
+    const camposAUsar = esInvitado
+        ? campos.filter(c => !columnasOcultas.includes(c))
+        : campos;
 
     useEffect(() => {
         if (!user && !modoLector) return;
@@ -141,6 +149,12 @@ function App() {
                     } else if (rol === "lector") {
                         setUser(null);
                         setModoLector(true);
+
+                        if (usuarioActual.email === CORREO_INVITADO) {
+                            setEsInvitado(true);
+                        } else {
+                            setEsInvitado(false);
+                        }
                     } else {
                         alert("Rol no reconocido.");
                         signOut(auth);
@@ -359,6 +373,22 @@ function App() {
         } catch (e) {
             console.error(e);
             alert("No se pudo eliminar el archivo.");
+        }
+    };
+
+    // Función para ocultar/mostrar archivos al invitado
+    const alternarVisibilidadArchivo = async (realIndex, path) => {
+        const nuevosDatos = [...datos];
+        const archivos = nuevosDatos[realIndex].archivos || [];
+
+        const archivoIndex = archivos.findIndex(a => a.path === path);
+        if (archivoIndex !== -1) {
+            // Invertimos el valor: si era true pasa a false, y viceversa
+            // Si 'oculto' no existía (undefined), !undefined es true (se oculta)
+            archivos[archivoIndex].oculto = !archivos[archivoIndex].oculto;
+
+            setDatos(nuevosDatos);
+            await guardarDatos(nuevosDatos);
         }
     };
 
@@ -817,7 +847,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
         );
     }
 
-    if (modoLector && verComparativa) {
+    if (modoLector && verComparativa && !esInvitado) {
         const totalA = datosA.reduce((acc, fila) => {
             const valor = parseFloat(
                 fila.egreso
@@ -1039,7 +1069,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                 <table className="min-w-full divide-y divide-gray-300 bg-white">
                     <thead className="bg-amber-400">
                         <tr>
-                            {campos.map((campo, i) => (
+                            {camposAUsar.map((campo, i) => (
                                 <th
                                     key={i}
                                     className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase"
@@ -1065,7 +1095,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                             const realIndex = datos.indexOf(fila);
                             return (
                                 <tr key={realIndex} className="hover:bg-gray-50 transition">
-                                    {campos.map((campo, i) => {
+                                    {camposAUsar.map((campo, i) => {
                                         let esEditable = false;
                                         if (user) {
                                             if (realIndex === 1 && campo === "os") {
@@ -1207,7 +1237,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
                 </button>
             )}
 
-            {modoLector && (
+            {modoLector && !esInvitado && (
                 <div className="mb-6 bg-gray-50 p-4 rounded-lg shadow flex flex-wrap gap-4 items-center">
                     <h2 className="text-lg font-semibold text-gray-800">
                         Comparar egresos entre años:
@@ -1240,7 +1270,7 @@ if (afterResumen + espacioNecesario > pageHeight) {
             )}
 
             {/* Sección de indicadores para lector */}
-            {modoLector && (
+            {modoLector && !esInvitado && (
                 <div className="mt-10 bg-gray-50 p-6 rounded-lg shadow">
                     <h2 className="text-xl font-semibold mb-4 text-gray-800">
                         Resumen mensual de egresos
@@ -1432,16 +1462,18 @@ if (afterResumen + espacioNecesario > pageHeight) {
                 </div>
             )}
             {/* NUEVO: Modal de Recursos */}
+            {/* NUEVO: Modal de Recursos */}
+            {/* NUEVO: Modal de Recursos BLINDADO */}
             {mostrarModalRecursos && filaSeleccionada !== null && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="bg-white w-full max-w-lg rounded-lg shadow-lg p-5">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-lg font-semibold text-gray-800">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white w-full max-w-3xl rounded-lg shadow-lg p-6">
+                        <div className="flex justify-between items-center mb-4 border-b pb-3">
+                            <h3 className="text-xl font-bold text-gray-800">
                                 Recursos de la actividad
                             </h3>
                             <button
                                 onClick={cerrarModalRecursos}
-                                className="text-gray-600 hover:text-gray-800"
+                                className="text-gray-500 hover:text-red-500 text-2xl font-bold transition"
                                 aria-label="Cerrar"
                             >
                                 ✕
@@ -1449,33 +1481,80 @@ if (afterResumen + espacioNecesario > pageHeight) {
                         </div>
 
                         {(() => {
-                            const archivos = datos[filaSeleccionada]?.archivos || [];
-                            if (archivos.length === 0) {
-                                return <p className="text-sm text-gray-600">No hay recursos adjuntos.</p>;
+                            // 1. Obtenemos siempre la lista completa original
+                            const listaCompleta = datos[filaSeleccionada]?.archivos || [];
+
+                            // 2. Determinamos si el usuario actual es un EDITOR (no está en modo lector)
+                            // Usamos !modoLector porque es más fiable que 'user' al cambiar de cuenta rápido.
+                            const esEditor = !modoLector;
+
+                            // 3. Decidimos qué lista vamos a renderizar
+                            // Si es el "Invitado especial", filtramos los ocultos.
+                            // Si es Editor (o cualquier otro lector), mostramos la lista completa.
+                            const archivosARenderizar = esInvitado
+                                ? listaCompleta.filter(a => !a.oculto)
+                                : listaCompleta;
+
+
+                            if (archivosARenderizar.length === 0) {
+                                return (
+                                    <div className="text-center py-8 text-gray-500">
+                                        <p>No hay recursos disponibles para mostrar.</p>
+                                    </div>
+                                );
                             }
+
                             return (
-                                <ul className="divide-y divide-gray-200">
-                                    {archivos.map((a, idx) => (
-                                        <li key={idx} className="py-3 flex items-center justify-between">
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-gray-800 truncate">{a.nombre}</p>
-                                                <p className="text-xs text-gray-500">
-                                                    {a.tipo} • {(a.peso / 1024).toFixed(1)} KB • {new Date(a.fecha).toLocaleString("es-PE")}
-                                                </p>
+                                <ul className="divide-y divide-gray-200 max-h-[60vh] overflow-y-auto pr-2">
+                                    {archivosARenderizar.map((a, idx) => (
+                                        // Aplicamos estilo gris si está oculto Y quien lo ve es el Editor
+                                        <li key={idx} className={`py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${a.oculto && esEditor ? "bg-gray-100 opacity-75 rounded-md px-2" : ""}`}>
+
+                                            {/* Lado izquierdo: Información */}
+                                            <div className="min-w-0 flex items-center gap-3 flex-1">
+                                                {/* Etiqueta "Oculto" SOLO para el Editor */}
+                                                {esEditor && a.oculto && (
+                                                    <span className="flex-shrink-0 bg-gray-600 text-white text-xs px-2 py-1 rounded font-medium uppercase tracking-wider" title="Este archivo no lo ve el invitado">
+                                                        Oculto
+                                                    </span>
+                                                )}
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold text-gray-800 truncate" title={a.nombre}>
+                                                        {a.nombre}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        {a.tipo.split("/")[1]?.toUpperCase() || "ARCHIVO"} • {(a.peso / 1024).toFixed(1)} KB • {new Date(a.fecha).toLocaleString("es-PE")}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
+
+                                            {/* Lado derecho: Botones */}
+                                            <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto justify-end">
+                                                {/* Botón OJO (Solo si es Editor) */}
+                                                {esEditor && (
+                                                    <button
+                                                        onClick={() => alternarVisibilidadArchivo(filaSeleccionada, a.path)}
+                                                        className={`p-2 rounded-md border transition ${a.oculto ? "bg-gray-200 text-gray-600 border-gray-300" : "bg-white text-blue-600 border-blue-200 hover:bg-blue-50"}`}
+                                                        title={a.oculto ? "Hacer visible para el invitado" : "Ocultar al invitado"}
+                                                    >
+                                                        {a.oculto ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                                                    </button>
+                                                )}
+
                                                 <a
                                                     href={a.url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm"
+                                                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition flex items-center"
                                                 >
                                                     Descargar
                                                 </a>
-                                                {user && (
+
+                                                {/* Botón Eliminar (Solo si es Editor) */}
+                                                {esEditor && (
                                                     <button
                                                         onClick={() => eliminarArchivoRecurso(filaSeleccionada, a.path)}
-                                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm"
+                                                        className="bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-4 py-2 rounded-md text-sm font-medium transition"
                                                     >
                                                         Eliminar
                                                     </button>
